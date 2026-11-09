@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bahari-sso"
+version = "0.3.0"
+description = "Sign customers and platform administrators in with Bahari Accounts (OIDC + PKCE, admin SSO, back-channel logout)."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+authors = [{ name = "Bahari" }]
+keywords = ["bahari", "sso", "oidc", "oauth2", "pkce", "identity"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: OS Independent",
+    "Framework :: Flask",
+    "Framework :: FastAPI",
+    "Topic :: Security",
+]
+dependencies = ["PyJWT[crypto]>=2.4"]
+
+[project.optional-dependencies]
+flask = ["flask>=2.2"]
+fastapi = ["fastapi>=0.95"]
+test = ["pytest>=7", "flask>=2.2", "fastapi>=0.95", "httpx>=0.24"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bahari_sso"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/bahari_sso", "tests", "README.md", "LICENSE", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]
