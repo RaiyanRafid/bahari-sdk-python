@@ -310,9 +310,18 @@ class BahariClient:
         url = self.discovery().url(name)
         return self._append(url, query) if query else url
 
-    def wallet_url(self, return_to: Optional[str] = None) -> str:
-        query = {k: v for k, v in {"platform": self._config.platform, "return_to": return_to}.items() if v}
+    def wallet_url(self, return_to: Optional[str] = None, amount: Optional[str] = None) -> str:
+        query = {k: v for k, v in {"platform": self._config.platform, "return_to": return_to, "amount": amount}.items() if v}
         return self.url("client.wallet_url", query)
+
+    def checkout_options(self, external_user_id: str) -> Any:
+        return self.api("GET", "platform-wallets/" + quote(external_user_id, safe="") + "/checkout-options", None, "wallet:read")
+
+    def start_top_up(self, external_user_id: str, top_up: Mapping[str, Any]) -> Any:
+        return self.api("POST", "platform-wallets/" + quote(external_user_id, safe="") + "/top-ups", top_up, "wallet:debit")
+
+    def top_up(self, external_user_id: str, reference: str) -> Any:
+        return self.api("GET", "platform-wallets/" + quote(external_user_id, safe="") + "/top-ups/" + quote(reference, safe=""), None, "wallet:read")
 
     # ------------------------------------------------------------ billing (features "Invoices" / "Subscriptions")
     # The app sets its prices; Bahari invoices, takes payment and renews. ``reference`` is your own UUID (idempotent).
