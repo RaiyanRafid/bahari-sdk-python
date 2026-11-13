@@ -384,6 +384,10 @@ class WebAuth:
         if self._add(key, True, 300):
             try:
                 self.store.revoke_subject("client", claims["sub"])
+                # Bahari also sends this when someone loses admin access to the app: end their admin sessions too.
+                revoke_linked = getattr(self.store, "revoke_linked_user", None)
+                if callable(revoke_linked):
+                    revoke_linked(str(claims["sub"]))
             except Exception:
                 self.cache.delete(key)
                 raise

@@ -173,6 +173,19 @@ that **encrypts tokens**, and use a shared cache.
 The browser id is replaced after every sign-in, which prevents session fixation. Every protected request rechecks
 the session with Bahari while holding a per-session lock. If the check fails for any reason, the local session ends.
 
+## Roles, maintenance and branding (0.4.0)
+
+```python
+client.role(identity)        # "SUPER_ADMIN", "ADMIN" or "USER"
+client.is_admin(identity)    # True only for an admin session of this app
+client.maintenance()         # {"enabled": bool, "message": str | None} — show a banner
+client.branding()            # logos, favicon, brand colour, access mode and support contact
+BahariClient.linked_user_id(identity)
+```
+
+Back-channel logout now also ends admin sessions whose profile ``user_id`` is the account Bahari names. A custom
+session store can add ``revoke_linked_user(user_id)``; without it, admin sessions end at their next check.
+
 ## Development
 
 ```bash

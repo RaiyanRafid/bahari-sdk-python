@@ -64,6 +64,10 @@ class SessionStore(Protocol):
     def revoke_subject(self, kind: str, subject: str) -> None:
         """Ends every active session of this Bahari account (back-channel logout)."""
 
+    # Optional: ``revoke_linked_user(user_id)`` ends admin sessions whose profile ``user_id`` is this Bahari account.
+    # Bahari sends back-channel logout when someone loses admin access; without it, admin sessions end at their next
+    # check.
+
 
 class MemorySessionStore:
     """Per-process, thread-safe store for development, tests and single-process apps.
@@ -122,4 +126,10 @@ class MemorySessionStore:
         with self._lock:
             for session in self._sessions.values():
                 if session.kind == kind and session.subject == subject:
+                    self._revoked[session.id] = True
+
+    def revoke_linked_user(self, user_id: str) -> None:
+        with self._lock:
+            for session in self._sessions.values():
+                if session.kind == "admin" and (session.profile or {}).get("user_id") == user_id:
                     self._revoked[session.id] = True

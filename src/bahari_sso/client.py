@@ -274,6 +274,67 @@ class BahariClient:
         ``claims["jti"]``."""
         return self._verifier.verify(token, logout=True)
 
+    # ------------------------------------------------------------------ roles, branding and maintenance
+
+    def role(self, identity: Any) -> str:
+        """The person's role in this app: ``SUPER_ADMIN``, ``ADMIN`` or ``USER``, as Bahari decides it from the platform's
+        Access & RBAC settings. A customer session is ``USER`` unless Bahari reports admin access to this platform."""
+        profile = getattr(identity, "profile", None) or {}
+        if getattr(identity, "kind", None) == "admin":
+            role = profile.get("role") or "ADMIN"
+        else:
+            access = profile.get("admin_access")
+            role = (
+                access.get("role")
+                if isinstance(access, dict) and access.get("platform") == self._config.platform and access.get("role") in ("ADMIN", "SUPER_ADMIN")
+                else "USER"
+            )
+        return role if role in ("SUPER_ADMIN", "ADMIN", "USER") else "USER"
+
+    def is_admin(self, identity: Any) -> bool:
+        """True for an administrator session of this app (not a customer who merely could become one)."""
+        return getattr(identity, "kind", None) == "admin" and self.role(identity) != "USER"
+
+    @staticmethod
+    def linked_user_id(identity: Any) -> str:
+        """The Bahari account a back-channel logout is about: the customer subject, or an admin session's user_id."""
+        if getattr(identity, "kind", None) == "admin":
+            return str((getattr(identity, "profile", None) or {}).get("user_id") or "")
+        return str(getattr(identity, "subject", ""))
+
+    def branding(self, platform: Optional[str] = None, ttl: int = 60) -> Dict[str, Any]:
+        """The app's branding, access mode, maintenance state and support contact from Bahari. Public, cached for
+        ``ttl`` seconds; the last good copy is used when Bahari cannot be reached."""
+        key = platform or self._config.platform
+        if not isinstance(key, str) or not re.fullmatch(r"[a-z0-9_-]{1,80}", key):
+            raise BahariError("Set the platform key (BAHARI_PLATFORM_KEY) to read branding.")
+        defaults: Dict[str, Any] = {
+            "name": None, "access_mode": "hybrid", "logo_url": None, "logo_light_url": None, "logo_dark_url": None,
+            "favicon_url": None, "brand_color": None, "maintenance": {"enabled": False, "message": None},
+            "support": {"email": None, "phone": None, "url": None},
+        }
+        cache_key = "bahari:branding:" + _sha256(self._config.issuer + "|" + key)
+        cached = self._cache.get(cache_key)
+        if isinstance(cached, dict):
+            return {**defaults, **cached}
+        template = self.discovery().get("api.platform_branding") or self._config.issuer + "/api/v1/platform-branding/{key}"
+        try:
+            data = self._send("GET", str(template).replace("{key}", quote(key, safe="")), throw=True).json("data")
+            if isinstance(data, dict):
+                self._cache.set(cache_key, data, max(1, ttl))
+                self._cache.set(cache_key + ":last-good", data, 604800)
+                return {**defaults, **data}
+        except Exception:  # noqa: BLE001 - fall back to the last good copy
+            pass
+        last = self._cache.get(cache_key + ":last-good")
+        return {**defaults, **(last if isinstance(last, dict) else {})}
+
+    def maintenance(self, platform: Optional[str] = None) -> Dict[str, Any]:
+        """``{"enabled": bool, "message": str | None}``: show a banner when enabled. Bahari already stops new sign-ins."""
+        maintenance = self.branding(platform).get("maintenance") or {}
+        message = maintenance.get("message")
+        return {"enabled": bool(maintenance.get("enabled")), "message": message if isinstance(message, str) else None}
+
     # ------------------------------------------------------------------ navigation and URLs
 
     def navigation(self, kind: str, tokens: Mapping[str, Any], wallet_return_to: Optional[str] = None) -> Any:

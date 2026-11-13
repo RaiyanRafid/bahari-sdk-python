@@ -439,3 +439,49 @@ def test_billing_helpers_call_the_billing_api_with_a_billing_machine_token():
     created = client.create_subscription({"user_id": SUBJECT, "reference": "r1", "plan_name": "Starter", "cycle": "monthly", "amount": "999.00"})
     assert created["data"] == {"status": "pending", "auth": "Bearer machine-billing"}
     assert client.cancel_subscription("ref/1", when="now")["data"]["when"] == "now"
+
+
+def test_branding_and_maintenance_are_cached_and_fall_back_to_the_last_good_copy():
+    cache = MemoryCache()
+    data = {"name": "Bahari Reseller", "access_mode": "hybrid", "brand_color": "#0EA5E9",
+            "maintenance": {"enabled": True, "message": "Back by 3 PM."}, "support": {"email": "help@reseller.test", "phone": None, "url": None}}
+    http = FakeHttp({"GET " + ISSUER + "/.well-known/bahari-configuration": json_response(discovery()),
+                     "GET " + ISSUER + "/api/v1/platform-branding/reseller": json_response({"data": data})})
+    client = make_client(http, cache)
+
+    assert client.branding()["name"] == "Bahari Reseller"
+    assert client.maintenance() == {"enabled": True, "message": "Back by 3 PM."}
+    assert client.branding()["support"]["email"] == "help@reseller.test"
+    assert len(http.sent) == 2  # cached
+
+    cache.delete("bahari:branding:" + hashlib.sha256((ISSUER + "|reseller").encode()).hexdigest())
+    offline = make_client(FakeHttp({"GET " + ISSUER + "/.well-known/bahari-configuration": json_response(discovery())}), cache)
+    assert offline.maintenance()["enabled"] is True  # last good copy
+    fresh = make_client(FakeHttp({"GET " + ISSUER + "/.well-known/bahari-configuration": json_response(discovery())}))
+    assert fresh.maintenance() == {"enabled": False, "message": None}
+
+
+def test_role_reports_admin_rights_from_bahari():
+    from bahari_sso import BahariClient, Identity
+
+    client = make_client(FakeHttp())
+    customer = Identity("client", SUBJECT, {}, profile())
+    would_be_admin = Identity("client", SUBJECT, {}, profile(admin_access={"platform": "reseller", "role": "ADMIN", "two_factor_ready": True}))
+    other_platform = Identity("client", SUBJECT, {}, profile(admin_access={"platform": "sms", "role": "SUPER_ADMIN", "two_factor_ready": True}))
+    admin = Identity("admin", "admin-1", {}, {"id": "admin-1", "user_id": SUBJECT, "role": "SUPER_ADMIN"})
+
+    assert [client.role(i) for i in (customer, would_be_admin, other_platform, admin)] == ["USER", "ADMIN", "USER", "SUPER_ADMIN"]
+    assert [client.is_admin(i) for i in (customer, would_be_admin, admin)] == [False, False, True]
+    assert [BahariClient.linked_user_id(customer), BahariClient.linked_user_id(admin)] == [SUBJECT, SUBJECT]
+
+
+def test_memory_store_ends_admin_sessions_linked_to_the_account():
+    from bahari_sso import Identity
+    from bahari_sso.sessions import MemorySessionStore
+
+    store = MemorySessionStore()
+    linked = store.create(Identity("admin", "admin-1", {"session_token": "s" * 64}, {"id": "admin-1", "user_id": SUBJECT}), 3600)
+    other = store.create(Identity("admin", "admin-2", {"session_token": "t" * 64}, {"id": "admin-2", "user_id": OTHER}), 3600)
+    store.revoke_linked_user(SUBJECT)
+    assert store.find("admin", linked.id) is None
+    assert store.find("admin", other.id) is not None

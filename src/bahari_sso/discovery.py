@@ -62,7 +62,7 @@ class Discovery:
                     "revoke_endpoint": api + "/admin-sso/revoke",
                     "navigation_endpoint": api + "/admin-sso/navigation",
                 },
-                "api": {"base_url": api, "platform_navigation": api + "/platform-navigation"},
+                "api": {"base_url": api, "platform_navigation": api + "/platform-navigation", "platform_branding": api + "/platform-branding/{key}"},
                 "sdk": {"packages": []},
             },
             from_server=False,
